@@ -15,9 +15,48 @@ const seedRoutes = require('./routes/seed');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+const normalizeOrigin = (value) => value ? value.replace(/\/$/, '') : value;
+const frontendOrigin = normalizeOrigin(process.env.FRONTEND_URL);
+const frontendHost = frontendOrigin ? new URL(frontendOrigin).host : null;
+const frontendPreviewPrefix = frontendHost?.endsWith('.vercel.app')
+  ? `${frontendHost.replace('.vercel.app', '')}-`
+  : null;
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    const normalizedOrigin = normalizeOrigin(origin);
+
+    if (frontendOrigin && normalizedOrigin === frontendOrigin) {
+      callback(null, true);
+      return;
+    }
+
+    if (frontendPreviewPrefix) {
+      try {
+        const { host } = new URL(normalizedOrigin);
+        if (host.endsWith('.vercel.app') && host.startsWith(frontendPreviewPrefix)) {
+          callback(null, true);
+          return;
+        }
+      } catch (error) {
+        callback(new Error('Invalid origin'));
+        return;
+      }
+    }
+
+    callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  credentials: true,
+};
+
 // Middleware
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
+app.use(cors(corsOptions));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 
